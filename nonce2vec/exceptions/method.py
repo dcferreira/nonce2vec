@@ -3,7 +3,7 @@
 Details
 """
 
-__all__ = ('InvalidMethodError')
+__all__ = "InvalidMethodError"
 
 
 class InvalidMethodError(Exception):

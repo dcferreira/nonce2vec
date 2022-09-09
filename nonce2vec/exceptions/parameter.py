@@ -3,7 +3,7 @@
 Details
 """
 
-__all__ = ('InvalidParameterError')
+__all__ = "InvalidParameterError"
 
 
 class InvalidParameterError(Exception):

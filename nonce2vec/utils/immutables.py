@@ -3,7 +3,7 @@
 from nonce2vec.exceptions.method import InvalidMethodError
 from nonce2vec.exceptions.parameter import InvalidParameterError
 
-__all__ = ('FrozenDict', 'ImmutableConfig')
+__all__ = ("FrozenDict", "ImmutableConfig")
 
 
 class FrozenDict(dict):
@@ -11,7 +11,7 @@ class FrozenDict(dict):
 
     def __setitem__(self, key, value):
         """Set method used for testing."""
-        raise InvalidMethodError('Cannot assign value to a FrozenDict')
+        raise InvalidMethodError("Cannot assign value to a FrozenDict")
 
 
 class ImmutableConfig(FrozenDict):
@@ -24,7 +24,8 @@ class ImmutableConfig(FrozenDict):
         """Constructor."""
         if not isinstance(config, dict):
             raise InvalidParameterError(
-                'ImmutableConfig requires instance of dict as input parameter')
+                "ImmutableConfig requires instance of dict as input parameter"
+            )
         super().__init__(self._freeze(config))
 
     def _get_frozen_value(self, input_value):
