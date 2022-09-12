@@ -59,7 +59,6 @@ def _load_nonce2vec_model(args, info, nonce):
     logger.info("Loading Nonce2Vec model...")
     model = Nonce2Vec.load(args.background)
     model.sg = 1
-    model.replication = args.replication
     model.sum_over_set = args.sum_over_set
     model.weighted = args.weighted
     if args.weighted:
@@ -504,7 +503,7 @@ def main():
     parser_test.add_argument(
         "--reload",
         action="store_true",
-        help="reload the background model at each " "iteration",
+        help="reload the background model at each iteration",
     )
     parser_test.add_argument(
         "--train-with",
@@ -522,7 +521,7 @@ def main():
         "--sum-only",
         action="store_true",
         default=False,
-        help="sum only: no additional training after " "sum initialization",
+        help="sum only: no additional training after sum initialization",
     )
     parser_test.add_argument(
         "--replication",
@@ -533,27 +532,27 @@ def main():
     parser_test.add_argument(
         "--reduced",
         action="store_true",
-        help="sum over the first sentence context words " "in the chimeras dataset",
+        help="sum over the first sentence context words in the chimeras dataset",
     )
     parser_test.add_argument(
         "--sum-over-set",
         action="store_true",
-        help="sum over set of context items rather than " "list",
+        help="sum over set of context items rather than list",
     )
     parser_test.add_argument(
         "--weighted",
         action="store_true",
-        help="apply weighted sum over context words. " "Weights are based on cwi",
+        help="apply weighted sum over context words. Weights are based on cwi",
     )
     parser_test.add_argument(
         "--train-over-set",
         action="store_true",
-        help="train over set of context items rather " "than list",
+        help="train over set of context items rather than list",
     )
     parser_test.add_argument(
         "--with-stats",
         action="store_true",
-        help="display informativeness statistics " "alongside test results",
+        help="display informativeness statistics alongside test results",
     )
     parser_test.add_argument(
         "--shuffle", action="store_true", help="shuffle the test set"

@@ -4,20 +4,31 @@ Loads a language model and computes various entropy-based informativeness
 measures.
 """
 
-from functools import lru_cache
-
 import logging
+import os
+from enum import Enum
+from functools import lru_cache
+from pathlib import Path
+from typing import Sequence, Tuple, List, Optional, Dict, Union
 
-import gensim.models
 import numpy as np
 import scipy
-
-from gensim.models import Word2Vec
-
+from gensim.models import Word2Vec, KeyedVectors
 
 __all__ = "Informativeness"
 
 logger = logging.getLogger(__name__)
+
+
+class FilterType(str, Enum):
+    random = "random"
+    self = "self"
+    cwi = "cwi"
+
+
+class SortBy(str, Enum):
+    asc = "asc"
+    desc = "desc"
 
 
 class Informativeness:
@@ -25,25 +36,25 @@ class Informativeness:
 
     def __init__(
         self,
-        model_path,
-        sum_filter=None,
-        sum_thresh=None,
-        train_filter=None,
-        train_thresh=None,
-        sort_by=None,
+        model: Union[str, Path, Word2Vec],
+        sum_filter: Optional[FilterType] = None,
+        sum_thresh: Optional[int] = None,
+        train_filter: Optional[FilterType] = None,
+        train_thresh: Optional[int] = None,
+        sort_by: Optional[SortBy] = None,
     ):
         """Initialize the Informativeness instance.
 
         Args:
-            model_path (str): The absolute path to the gensim w2v CBOW model.
-            sum_filter (str): Filter for the sum initialization phase.
-            sum_thresh (int): Threshold for sum filter (self and cwi filters
-                              only).
-            train_filter (str): Filter for the training phase.
-            train_thresh (int): Threshold for the train filter (self and cwi
-                                filters only).
-            sort_by (str): Sort context items in asc or desc of cwi values
-                           before training.
+            model_path: The absolute path to the gensim w2v CBOW model.
+            sum_filter: Filter for the sum initialization phase.
+            sum_thresh: Threshold for sum filter (self and cwi filters
+                        only).
+            train_filter: Filter for the training phase.
+            train_thresh: Threshold for the train filter (self and cwi
+                          filters only).
+            sort_by: Sort context items in asc or desc of cwi values
+                     before training.
         """
         self._sum_filter = sum_filter
         if sum_filter and sum_filter != "random" and sum_thresh is None:
@@ -59,27 +70,33 @@ class Informativeness:
                 "specifying a threshold parameter".format(train_filter)
             )
         self._train_thresh = train_thresh
-        self._model = Word2Vec.load(model_path)
+        self._model: Word2Vec
+        if isinstance(model, str):
+            self._model = Word2Vec.load(model)
+        elif isinstance(model, Path):
+            self._model = Word2Vec.load(os.fspath(model))
+        else:
+            self._model = model
         self._sort_by = sort_by
 
     @property
-    def sum_filter(self):
+    def sum_filter(self) -> Optional[FilterType]:
         """Return sum filter attribute."""
         return self._sum_filter
 
     @sum_filter.setter
-    def sum_filter(self, sum_filter):
+    def sum_filter(self, sum_filter: Optional[FilterType]):
         self._sum_filter = sum_filter
 
     @lru_cache(maxsize=10)
-    def _get_prob_distribution(self, context):
+    def _get_prob_distribution(self, context: Tuple[str, ...]) -> List[float]:
         words_and_probs = self._model.predict_output_word(
             context, topn=len(self._model.wv)
         )
         return [item[1] for item in words_and_probs]
 
     @lru_cache(maxsize=10)
-    def _get_context_entropy(self, context):
+    def _get_context_entropy(self, context: Tuple[str, ...]) -> float:
         if not context:
             return 0
         probs = self._get_prob_distribution(context)
@@ -90,7 +107,9 @@ class Informativeness:
         return ctx_ent
 
     @lru_cache(maxsize=50)
-    def _get_context_word_entropy(self, context, word_index: int):
+    def _get_context_word_entropy(
+        self, context: Tuple[str, ...], word_index: int
+    ) -> float:
         ctx_ent_with_word = self._get_context_entropy(context)
         ctx_without_word = tuple(
             x for idx, x in enumerate(context) if idx != word_index
@@ -100,25 +119,41 @@ class Informativeness:
         return cwi
 
     @lru_cache(maxsize=50)
-    def _keep_item(self, idx: int, context, filter_type, threshold: float):
-        if not filter_type:
+    def _keep_item(
+        self,
+        idx: int,
+        context: Tuple[str, ...],
+        filter_type: Optional[FilterType],
+        threshold: Optional[int],
+    ) -> bool:
+        if filter_type is None:
             return True
         if filter_type == "random":
             return (
                 self._model.wv.get_vecattr(context[idx], "sample_int")
-                > self._model.random.rand() * 2 ** 32
+                > self._model.random.rand() * 2**32
             )
-        if filter_type == "self":
-            return (
-                np.log(self._model.wv.get_vecattr(context[idx], "sample_int"))
-                > threshold
+        if threshold is not None:
+            if filter_type == "self":
+                return (
+                    np.log(self._model.wv.get_vecattr(context[idx], "sample_int"))
+                    > threshold
+                )
+            if filter_type == "cwi":
+                return self._get_context_word_entropy(context, idx) > threshold
+        else:
+            raise ValueError(
+                "Filter types cwi and self require a set threshold, but received None"
             )
-        if filter_type == "cwi":
-            return self._get_context_word_entropy(context, idx) > threshold
         raise Exception("Invalid ctx_filter parameter: {}".format(filter_type))
 
-    def _filter_context(self, context, filter_type, threshold: float):
-        if not filter_type:
+    def _filter_context(
+        self,
+        context: Sequence[str],
+        filter_type: Optional[FilterType],
+        threshold: Optional[int],
+    ) -> List[str]:
+        if filter_type is None:
             logger.warning(
                 "Applying no filters to context selection: "
                 "this should negatively, and significantly, "
@@ -130,17 +165,24 @@ class Informativeness:
                     filter_type, threshold
                 )
             )
-        return tuple(
+        return [
             ctx
             for idx, ctx in enumerate(context)
-            if self._keep_item(idx, context, filter_type, threshold)
-        )
+            if self._keep_item(idx, tuple(context), filter_type, threshold)
+        ]
 
     @classmethod
-    def _get_in_vocab_context(cls, sentence, keyed_vectors, nonce):
-        return tuple([w for w in sentence if w in keyed_vectors and w != nonce])
+    def _get_in_vocab_context(
+        cls, sentence: Sequence[str], keyed_vectors: KeyedVectors, nonce: str
+    ) -> List[str]:
+        return [w for w in sentence if w in keyed_vectors and w != nonce]
 
-    def get_ctx_ent_for_weighted_sum(self, sentences, keyed_vectors, nonce):
+    def get_ctx_ent_for_weighted_sum(
+        self,
+        sentences: Sequence[Sequence[str]],
+        keyed_vectors: KeyedVectors,
+        nonce: str,
+    ) -> Dict[str, float]:
         """Return context entropy."""
         ctx_ent_map = {}
         ctx_ent = self._get_filtered_train_ctx_ent(sentences, keyed_vectors, nonce)
@@ -152,20 +194,30 @@ class Informativeness:
                     ctx_ent_map[ctx] = cwi
         return ctx_ent_map
 
-    def _get_filtered_train_ctx_ent(self, sentences, keyed_vectors, nonce):
+    def _get_filtered_train_ctx_ent(
+        self,
+        sentences: Sequence[Sequence[str]],
+        keyed_vectors: KeyedVectors,
+        nonce: str,
+    ) -> List[Tuple[str, float]]:
         ctx_ent = []
         for sentence in sentences:
             context = self._get_in_vocab_context(sentence, keyed_vectors, nonce)
             for idx, ctx in enumerate(context):
                 if self._keep_item(
-                    idx, context, self._train_filter, self._train_thresh
+                    idx, tuple(context), self._train_filter, self._train_thresh
                 ):
-                    cwi = self._get_context_word_entropy(context, idx)
+                    cwi = self._get_context_word_entropy(tuple(context), idx)
                     logger.debug("word = {} | cwi = {}".format(context[idx], cwi))
                     ctx_ent.append((ctx, cwi))
         return ctx_ent
 
-    def filter_and_sort_train_ctx_ent(self, sentences, keyed_vectors, nonce):
+    def filter_and_sort_train_ctx_ent(
+        self,
+        sentences: Sequence[Sequence[str]],
+        keyed_vectors: KeyedVectors,
+        nonce: str,
+    ) -> List[Tuple[str, float]]:
         """Sort context and return a list of (ctx_word, ctx_word_entropy)."""
         logger.debug("Filtering and sorting train context...")
         ctx_ent = self._get_filtered_train_ctx_ent(sentences, keyed_vectors, nonce)
@@ -178,8 +230,11 @@ class Informativeness:
         raise Exception("Invalid sort_by value: {}".format(self._sort_by))
 
     def filter_sum_context(
-        self, sentences, keyed_vectors: gensim.models.KeyedVectors, nonce: str
-    ):
+        self,
+        sentences: Sequence[Sequence[str]],
+        keyed_vectors: KeyedVectors,
+        nonce: str,
+    ) -> Tuple[List[str], List[str]]:
         """Filter the context to be summed over."""
         logger.debug("Filtering sum context...")
         filtered_ctx = []
