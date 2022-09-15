@@ -3,27 +3,22 @@
 This is the entry point of the application.
 """
 
-import os
-
 import argparse
 import logging
 import logging.config
-
 import math
-import scipy
-import numpy as np
+import os
 
 import gensim
-
+import numpy as np
+import scipy
 from gensim.models import Word2Vec
 
 import nonce2vec.utils.config as cutils
 import nonce2vec.utils.files as futils
-
+from nonce2vec.models.informativeness import Informativeness
 from nonce2vec.models.nonce2vec import Nonce2Vec
 from nonce2vec.utils.files import Samples
-from nonce2vec.models.informativeness import Informativeness
-
 
 logging.config.dictConfig(
     cutils.load(os.path.join(os.path.dirname(__file__), "logging.yml"))

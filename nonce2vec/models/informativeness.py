@@ -9,11 +9,11 @@ import os
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence, Tuple, List, Optional, Dict, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import scipy
-from gensim.models import Word2Vec, KeyedVectors
+from gensim.models import KeyedVectors, Word2Vec
 
 __all__ = "Informativeness"
 

@@ -7,10 +7,10 @@ A modified version of gensim.Word2Vec.
 
 import logging
 import os
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union, Sequence, Dict, Any, Callable, List, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Union
 
 import numpy as np
 import numpy.typing as npt

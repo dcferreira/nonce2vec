@@ -1,0 +1,103 @@
+[build-system]
+requires = [
+    "hatchling>=1.3.1",
+]
+build-backend = "hatchling.build"
+
+[project]
+name = "nonce2vec"
+description = "A python module to generate word embeddings from tiny data"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = " Alexandre Kabbach and Aurélie Herbelot", email = "akb@3azouz.net" },
+]
+keywords = [
+    "incremental-learning",
+    "word-embeddings",
+    "word2vec",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "gensim~=4.2.0",
+    "numpy~=1.21",
+    "pyyaml~=6.0",
+    "scipy~=1.7.0",
+    "typer~=0.6.0",
+    "six~=1.16.0",
+]
+dynamic = [
+    "version",
+]
+
+[tool.hatch.version]
+path = "nonce2vec/__about__.py"
+
+[project.scripts]
+n2v = "nonce2vec.main:main"
+
+[tool.hatch.envs.default]
+dependencies = [
+  "pytest",
+  "pytest-cov",
+  "black",
+  "mypy",
+  "flakeheaven",
+  "isort",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest -s --verbose --showlocals --cov-report=term-missing --cov-config=pyproject.toml --cov=nonce2vec --cov=tests"
+typecheck = "mypy --show-error-codes nonce2vec tests"
+format-check = [
+  "black --check nonce2vec tests",
+  "isort --check nonce2vec tests",
+]
+lint = [
+  "flakeheaven lint nonce2vec tests",
+  "format-check",
+]
+format = [
+  "black nonce2vec tests",
+  "isort nonce2vec tests",
+  "format-check",
+]
+
+[project.urls]
+Download = "https://github.com/minimalparts/nonce2vec/#files"
+Homepage = "https://github.com/minimalparts/nonce2vec"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/nonce2vec",
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.flakeheaven]
+max-line-length = 88
+extend-ignore = "E203"
+show_source = true
+
+[tool.flakeheaven.plugins]
+pyflakes = ["+*"]
+pycodestyle = ["+*", "-W503"]
+pylint = ["+*"]
+# enable everything that starts with `flake8-`
+"flake8-*" = ["+*"]

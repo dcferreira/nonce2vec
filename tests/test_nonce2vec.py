@@ -19,13 +19,13 @@ def test_add_nonce_reduced_correct(w2v_models, test_sentences):
     sg_model, cbow_model = w2v_models
     info_model_obj = Informativeness(cbow_model)
     n2v_model = Nonce2Vec(
-        sg_model, info_model_obj, reduced=True, shuffle=False, epochs=10000
+        sg_model, info_model_obj, reduced=True, shuffle=False, epochs=100
     )
 
     nonce = "giraffes"
     n2v_model.add_nonces(test_sentences)
     assert (
-        n2v_model.model.wv.similarity("giraffes", "cats") > 0.6
+        n2v_model.model.wv.similarity("giraffes", "cats") > 0.55
     ), n2v_model.model.wv.similar_by_key(nonce, topn=20)
 
 

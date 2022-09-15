@@ -4,6 +4,7 @@ Methods used to manipulate YAML-based configuration files.
 """
 
 import logging
+
 import yaml
 
 from nonce2vec.utils.immutables import ImmutableConfig

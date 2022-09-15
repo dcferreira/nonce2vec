@@ -1,13 +1,13 @@
 import os
 import pickle
 from pathlib import Path
-from typing import Optional, List, Tuple, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import typer
 from gensim.models import Word2Vec
 
-from nonce2vec.models.informativeness import Informativeness, FilterType, SortBy
-from nonce2vec.models.nonce2vec import Nonce2Vec, LearningRateFunction
+from nonce2vec.models.informativeness import FilterType, Informativeness, SortBy
+from nonce2vec.models.nonce2vec import LearningRateFunction, Nonce2Vec
 from nonce2vec.utils.files import get_model_path
 
 app = typer.Typer()
@@ -168,9 +168,9 @@ def train_n2v(
         shuffle=shuffle,
     )
     test_sentences = read_sentences(test_data)
-    for nonce in ["giraffes"]:
-        n2v_model.add_nonce(nonce, sentences=test_sentences)
-        print(n2v_model.model.wv.get_vector(nonce))
+    n2v_model.add_nonces(test_sentences)
+    for nonce in n2v_model.new_nonces:
+        print(nonce, n2v_model.model.wv.get_vector(nonce))
 
 
 if __name__ == "__main__":

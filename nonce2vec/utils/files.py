@@ -1,8 +1,8 @@
 """Files utils."""
 
+import logging
 import os
 import random
-import logging
 
 __all__ = ("Samples", "get_model_path")
 
