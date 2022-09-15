@@ -10,7 +10,7 @@ import os
 from collections import defaultdict, OrderedDict
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union, Sequence, Dict, Any, Callable
+from typing import Optional, Union, Sequence, Dict, Any, Callable, List, Set
 
 import numpy as np
 import numpy.typing as npt
@@ -18,7 +18,6 @@ from gensim.models.word2vec import Word2Vec
 from gensim.utils import keep_vocab_item
 from scipy.special import expit
 from six import iteritems
-from six.moves import xrange
 
 __all__ = "Nonce2Vec"
 
@@ -33,11 +32,42 @@ class LearningRateFunction(str, Enum):
     CST = "cst_alpha"
 
 
+class CustomTrainingWord2Vec(Word2Vec):
+    def __init__(self, *args, n2vmodel: "Nonce2Vec", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.n2v = n2vmodel
+
+    # noinspection PyMethodOverriding
+    @classmethod
+    def load(cls, *args, n2vmodel: "Nonce2Vec", **kwargs):
+        model = super().load(*args, **kwargs)
+        model.n2v = n2vmodel
+        return model
+
+    @classmethod
+    def from_w2v(cls, w2vmodel: Word2Vec, n2vmodel: "Nonce2Vec"):
+        w2vmodel.n2v = n2vmodel
+        w2vmodel.__class__ = cls
+        return w2vmodel
+
+    def _do_train_job(self, sentences, *args, **kwargs):
+        """Train a single batch of sentences.
+
+        Return 2-tuple `(effective word count after ignoring unknown words
+        and sentence length trimming, total word count)`.
+        """
+        tally = train_batch_sg(
+            nonce2vec=self.n2v,
+            sentences=sentences,
+        )
+        # noinspection PyProtectedMember
+        return tally, self._raw_word_count(sentences)
+
+
 class Nonce2Vec:
-    # TODO need to figure out how to best send the arguments at test time to the w2v model
     def __init__(
         self,
-        model: Union[Path, Word2Vec],
+        model: Union[Path, CustomTrainingWord2Vec, Word2Vec],
         info_model: Informativeness,
         reload: bool = False,
         epochs: int = 5,
@@ -55,9 +85,11 @@ class Nonce2Vec:
         with_stats: bool = False,
         shuffle: bool = False,
     ):
-        self.model: Word2Vec
+        self.model: CustomTrainingWord2Vec
         if isinstance(model, Path):
-            self.model = Word2Vec.load(os.fspath(model))
+            self.model = CustomTrainingWord2Vec.load(os.fspath(model), n2vmodel=self)
+        elif isinstance(model, Word2Vec):
+            self.model = CustomTrainingWord2Vec.from_w2v(model, self)
         else:
             self.model = model
         self.info_model = info_model
@@ -77,7 +109,6 @@ class Nonce2Vec:
         self.with_stats = with_stats
         self.shuffle = shuffle
 
-        self.current_nonce: Optional[str] = None
         self.vectors_lockf: npt.NDArray[np.float32] = np.ones(
             len(self.model.wv), dtype=np.float32
         )
@@ -87,33 +118,18 @@ class Nonce2Vec:
             self.neg_labels = np.zeros(self.model.negative + 1).astype(np.float32)
             self.neg_labels[0] = 1.0
 
-    def add_nonce(self, nonce: str, sentences: Sequence[Sequence[str]]):
-        logger.debug(f"Adding nonce {nonce!r}...")
-        self.current_nonce = nonce
+        self.new_nonces: Optional[List[str]] = None
+        self._new_nonces_set: Optional[Set[str]] = None
+
+    def add_nonces(self, sentences: Sequence[Sequence[str]]):
         if self.reduced:
             self.build_vocab([sentences[0]], update=True)
         else:
             self.build_vocab(sentences, update=True)
         if not self.sum_only:
             self.model.train(
-                sentences,
-                total_examples=self.model.corpus_count,
-                epochs=self.epochs,
+                sentences, total_examples=self.model.corpus_count, epochs=self.epochs
             )
-        logger.debug("Nonce added!")
-
-    def _do_train_job(self, sentences):
-        """Train a single batch of sentences.
-
-        Return 2-tuple `(effective word count after ignoring unknown words
-        and sentence length trimming, total word count)`.
-        """
-        tally = train_batch_sg(
-            nonce2vec=self,
-            sentences=sentences,
-        )
-        # noinspection PyProtectedMember
-        return tally, self.model._raw_word_count(sentences)
 
     def build_vocab(
         self,
@@ -146,7 +162,6 @@ class Nonce2Vec:
             self.model.negative,
             self.model.wv,
             sentences,
-            self.current_nonce,
             update=update,
             sum_over_set=self.sum_over_set,
             weighted=self.weighted,
@@ -167,7 +182,7 @@ class Nonce2Vec:
         negative,
         wv,
         sentences,
-        nonce,
+        # nonce,
         update=False,
         sum_over_set=False,
         weighted=False,
@@ -187,7 +202,7 @@ class Nonce2Vec:
                 negative,
                 wv,
                 sentences,
-                nonce,
+                # nonce,
                 sum_over_set,
                 weighted,
                 beta,
@@ -200,7 +215,7 @@ class Nonce2Vec:
         negative,
         wv,
         sentences,
-        nonce,
+        # nonce,
         sum_over_set=False,
         weighted=False,
         beta=1000,
@@ -212,6 +227,8 @@ class Nonce2Vec:
         logger.info("updating layer weights")
         gained_vocab = len(wv) - len(wv.vectors)
         newvectors = np.zeros((gained_vocab, wv.vector_size), dtype=np.float32)
+        self.new_nonces = wv.index_to_key[len(wv.vectors) :]
+        self._new_nonces_set = list(self.new_nonces)
 
         # randomize the remaining words
         # FIXME as-is the code is bug-prone. We actually only want to
@@ -220,17 +237,12 @@ class Nonce2Vec:
         # min_count as the pre-trained background model. Otherwise
         # we won't be able to sum as we won't have vectors for the other
         # gained background words
-        if gained_vocab > 1:
-            raise Exception(
-                "Creating sum vector for non-nonce word. Do "
-                "not specify a min_count when running Nonce2Vec."
-            )
-        if gained_vocab == 0:
-            raise Exception(
-                "Nonce word '{}' already in test set and not "
-                "properly deleted".format(nonce)
-            )
-        for i in xrange(len(wv.vectors), len(wv)):
+        # if gained_vocab == 0:
+        #     raise Exception(
+        #         "Nonce word '{}' already in test set and not "
+        #         "properly deleted".format(nonce)
+        #     )
+        for i, nonce in enumerate(self.new_nonces, start=len(wv.vectors)):
             # Initialise to sum
             raw_ctx, filtered_ctx = self.info_model.filter_sum_context(
                 sentences, pre_exist_words, nonce
@@ -322,57 +334,47 @@ class Nonce2Vec:
         # New words and pre-existing words are two separate lists
         new_words = []
         pre_exist_words = []
-        if self.current_nonce is not None:
-            if self.current_nonce in wv:
-                gold_nonce = "{}_true".format(self.current_nonce)
-                nonce_index = wv.key_to_index[self.current_nonce]
-                wv.key_to_index[gold_nonce] = wv.key_to_index[self.current_nonce]
-                wv.index_to_key[nonce_index] = gold_nonce
-                # del wv.index_to_key[wv.vocab[self.nonce].index]
-                del wv.key_to_index[self.current_nonce]
-            for word, v in iteritems(self.model.raw_vocab):
-                # Update count of all words already in vocab
-                if word in wv:
-                    pre_exist_words.append(word)
-                    pre_exist_total += v
+        for word, v in iteritems(self.model.raw_vocab):
+            # Update count of all words already in vocab
+            if word in wv:
+                pre_exist_words.append(word)
+                pre_exist_total += v
+                if not dry_run:
+                    wv.set_vecattr(word, "count", wv.get_vecattr(word, "count") + v)
+            else:
+                # For new words, keep the ones above the min count
+                # AND the nonce (regardless of count)
+                if (
+                    keep_vocab_item(word, v, min_count, trim_rule=trim_rule)
+                    or word in self._new_nonces_set
+                ):
+                    new_words.append(word)
+                    new_total += v
                     if not dry_run:
-                        wv.set_vecattr(word, "count", wv.get_vecattr(word, "count") + v)
+                        wv.key_to_index[word] = len(wv)
+                        wv.index_to_key.append(word)
+                        wv.set_vecattr(word, "count", v)
                 else:
-                    # For new words, keep the ones above the min count
-                    # AND the nonce (regardless of count)
-                    if (
-                        keep_vocab_item(word, v, min_count, trim_rule=trim_rule)
-                        or word == self.current_nonce
-                    ):
-                        new_words.append(word)
-                        new_total += v
-                        if not dry_run:
-                            wv.key_to_index[word] = len(wv)
-                            wv.index_to_key.append(word)
-                            wv.set_vecattr(word, "count", v)
-                    else:
-                        drop_unique += 1
-                        drop_total += v
-            original_unique_total = len(pre_exist_words) + len(new_words) + drop_unique
-            pre_exist_unique_pct = (
-                len(pre_exist_words) * 100 / max(original_unique_total, 1)
-            )
-            new_unique_pct = len(new_words) * 100 / max(original_unique_total, 1)
-            logger.info(
-                "New added %i unique words (%i%% of original %i) "
-                "and increased the count of %i pre-existing words "
-                "(%i%% of original %i)",
-                len(new_words),
-                new_unique_pct,
-                original_unique_total,
-                len(pre_exist_words),
-                pre_exist_unique_pct,
-                original_unique_total,
-            )
-            retain_words = new_words + pre_exist_words
-            retain_total = new_total + pre_exist_total
-        else:
-            retain_total, retain_words = 0, []
+                    drop_unique += 1
+                    drop_total += v
+        original_unique_total = len(pre_exist_words) + len(new_words) + drop_unique
+        pre_exist_unique_pct = (
+            len(pre_exist_words) * 100 / max(original_unique_total, 1)
+        )
+        new_unique_pct = len(new_words) * 100 / max(original_unique_total, 1)
+        logger.info(
+            "New added %i unique words (%i%% of original %i) "
+            "and increased the count of %i pre-existing words "
+            "(%i%% of original %i)",
+            len(new_words),
+            new_unique_pct,
+            original_unique_total,
+            len(pre_exist_words),
+            pre_exist_unique_pct,
+            original_unique_total,
+        )
+        retain_words = new_words + pre_exist_words
+        retain_total = new_total + pre_exist_total
 
         # Precalculate each vocabulary item's threshold for sampling
         if not sample:
@@ -467,6 +469,7 @@ def compute_exp_alpha(
 def train_sg_pair(
     nonce2vec: Nonce2Vec,
     word: str,
+    nonce: str,
     context_index: int,
     alpha: float,
     learn_vectors: bool = True,
@@ -490,11 +493,7 @@ def train_sg_pair(
     neu1e = np.zeros(l1.shape)
 
     # Only train the nonce
-    if (
-        nonce2vec.current_nonce is not None
-        and nonce2vec.model.wv.index_to_key[context_index] == nonce2vec.current_nonce
-        and word != nonce2vec.current_nonce
-    ):
+    if nonce2vec.model.wv.index_to_key[context_index] == nonce and word != nonce:
         lock_factor = context_locks[context_index]
         if nonce2vec.model.negative:
             # use this word (label = 1) + `negative` other random words not
@@ -533,68 +532,70 @@ def _get_unique_ctx_ent_tuples(ctx_ent_tuples):
 
 
 def train_batch_sg(nonce2vec: Nonce2Vec, sentences: Sequence[Sequence[str]]) -> int:
-    if nonce2vec.current_nonce is None:
-        raise ValueError("Trying to train a batch before setting the current nonce!")
+    if nonce2vec.new_nonces is None:
+        raise ValueError("Trying to train a batch before setting new nonces!")
     result = 0
-    alpha = nonce2vec.model.alpha  # re-initialize learning rate before each batch
-    ctx_ent_tuples = nonce2vec.info_model.filter_and_sort_train_ctx_ent(
-        sentences, nonce2vec.model.wv, nonce2vec.current_nonce
-    )
-    if nonce2vec.train_over_set:
-        logger.debug("Training over set of context items")
-        ctx_ent_tuples = _get_unique_ctx_ent_tuples(ctx_ent_tuples)
-    logger.debug("Training on context = {}".format(ctx_ent_tuples))
-    nonce_vocab_idx = nonce2vec.model.wv.key_to_index[nonce2vec.current_nonce]
-    nonce_count = 0
-    for ctx_word, cwi in ctx_ent_tuples:
-        ctx_vocab_idx = nonce2vec.model.wv.key_to_index[ctx_word]
-        nonce_count += 1
-        if not nonce2vec.train_with:
-            raise Exception(
-                "Unspecified learning rate decay function. "
-                "You must specify a 'train_with' parameter"
-            )
-        if nonce2vec.train_with == "cwi_alpha":
-            alpha = compute_cwi_alpha(
-                cwi,
-                nonce2vec.kappa,
-                nonce2vec.beta,
-                nonce2vec.model.alpha,
-                nonce2vec.model.min_alpha,
-            )
-            logger.debug(
-                "training on '{}' and '{}' with cwi = {}, b_cwi = {}, "
-                "alpha = {}".format(
-                    nonce2vec.model.wv.index_to_key[nonce_vocab_idx],
-                    nonce2vec.model.wv.index_to_key[ctx_vocab_idx],
-                    round(cwi, 5),
-                    round(np.tanh(nonce2vec.beta * cwi), 4),
-                    round(alpha, 5),
-                )
-            )
-        if nonce2vec.train_with == "exp_alpha":
-            alpha = compute_exp_alpha(
-                nonce_count,
-                nonce2vec.lambda_decay,
-                nonce2vec.model.alpha,
-                nonce2vec.model.min_alpha,
-            )
-            logger.debug(
-                "training on '{}' and '{}' with cwi = {}, "
-                "alpha = {}".format(
-                    nonce2vec.model.wv.index_to_key[nonce_vocab_idx],
-                    nonce2vec.model.wv.index_to_key[ctx_vocab_idx],
-                    round(cwi, 5),
-                    round(alpha, 5),
-                )
-            )
-        if nonce2vec.train_with == "cst_alpha":
-            alpha = nonce2vec.model.alpha
-        train_sg_pair(
-            nonce2vec,
-            nonce2vec.model.wv.index_to_key[ctx_vocab_idx],
-            nonce_vocab_idx,
-            alpha,
+    for current_nonce in nonce2vec.new_nonces:
+        alpha = nonce2vec.model.alpha  # re-initialize learning rate before each batch
+        ctx_ent_tuples = nonce2vec.info_model.filter_and_sort_train_ctx_ent(
+            sentences, nonce2vec.model.wv, current_nonce
         )
-        result += len(ctx_ent_tuples) + 1
+        if nonce2vec.train_over_set:
+            logger.debug("Training over set of context items")
+            ctx_ent_tuples = _get_unique_ctx_ent_tuples(ctx_ent_tuples)
+        logger.debug("Training on context = {}".format(ctx_ent_tuples))
+        nonce_vocab_idx = nonce2vec.model.wv.key_to_index[current_nonce]
+        nonce_count = 0
+        for ctx_word, cwi in ctx_ent_tuples:
+            ctx_vocab_idx = nonce2vec.model.wv.key_to_index[ctx_word]
+            nonce_count += 1
+            if not nonce2vec.train_with:
+                raise Exception(
+                    "Unspecified learning rate decay function. "
+                    "You must specify a 'train_with' parameter"
+                )
+            if nonce2vec.train_with == "cwi_alpha":
+                alpha = compute_cwi_alpha(
+                    cwi,
+                    nonce2vec.kappa,
+                    nonce2vec.beta,
+                    nonce2vec.model.alpha,
+                    nonce2vec.model.min_alpha,
+                )
+                logger.debug(
+                    "training on '{}' and '{}' with cwi = {}, b_cwi = {}, "
+                    "alpha = {}".format(
+                        nonce2vec.model.wv.index_to_key[nonce_vocab_idx],
+                        nonce2vec.model.wv.index_to_key[ctx_vocab_idx],
+                        round(cwi, 5),
+                        round(np.tanh(nonce2vec.beta * cwi), 4),
+                        round(alpha, 5),
+                    )
+                )
+            if nonce2vec.train_with == "exp_alpha":
+                alpha = compute_exp_alpha(
+                    nonce_count,
+                    nonce2vec.lambda_decay,
+                    nonce2vec.model.alpha,
+                    nonce2vec.model.min_alpha,
+                )
+                logger.debug(
+                    "training on '{}' and '{}' with cwi = {}, "
+                    "alpha = {}".format(
+                        nonce2vec.model.wv.index_to_key[nonce_vocab_idx],
+                        nonce2vec.model.wv.index_to_key[ctx_vocab_idx],
+                        round(cwi, 5),
+                        round(alpha, 5),
+                    )
+                )
+            if nonce2vec.train_with == "cst_alpha":
+                alpha = nonce2vec.model.alpha
+            train_sg_pair(
+                nonce2vec,
+                nonce2vec.model.wv.index_to_key[ctx_vocab_idx],
+                current_nonce,
+                nonce_vocab_idx,
+                alpha,
+            )
+            result += len(ctx_ent_tuples) + 1
     return result

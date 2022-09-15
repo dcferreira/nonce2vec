@@ -27,4 +27,5 @@ def w2v_models(train_sentences) -> Tuple[Word2Vec, Word2Vec]:
     return train_w2v_models(
         train_sentences,
         min_count=1,
+        epochs=1000,
     )
