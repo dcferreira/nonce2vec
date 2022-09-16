@@ -5,7 +5,6 @@
 A modified version of gensim.Word2Vec.
 """
 
-import logging
 import os
 from collections import OrderedDict, defaultdict
 from enum import Enum
@@ -16,14 +15,13 @@ import numpy as np
 import numpy.typing as npt
 from gensim.models.word2vec import Word2Vec
 from gensim.utils import keep_vocab_item
+from loguru import logger
 from scipy.special import expit
 from six import iteritems
 
-__all__ = "Nonce2Vec"
-
 from nonce2vec.models.informativeness import Informativeness
 
-logger = logging.getLogger(__name__)
+__all__ = "Nonce2Vec"
 
 
 class LearningRateFunction(str, Enum):

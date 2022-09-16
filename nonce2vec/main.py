@@ -4,27 +4,19 @@ This is the entry point of the application.
 """
 
 import argparse
-import logging
-import logging.config
 import math
-import os
 
 import gensim
 import numpy as np
 import scipy
 from gensim.models import Word2Vec
+from loguru import logger
 
 import nonce2vec.utils.config as cutils
 import nonce2vec.utils.files as futils
 from nonce2vec.models.informativeness import Informativeness
 from nonce2vec.models.nonce2vec import Nonce2Vec
 from nonce2vec.utils.files import Samples
-
-logging.config.dictConfig(
-    cutils.load(os.path.join(os.path.dirname(__file__), "logging.yml"))
-)
-
-logger = logging.getLogger(__name__)
 
 
 # Note: this is scipy's spearman, without tie adjustment

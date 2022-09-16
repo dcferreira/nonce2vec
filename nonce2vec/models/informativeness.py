@@ -4,7 +4,6 @@ Loads a language model and computes various entropy-based informativeness
 measures.
 """
 
-import logging
 import os
 from enum import Enum
 from functools import lru_cache
@@ -14,10 +13,9 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import scipy
 from gensim.models import KeyedVectors, Word2Vec
+from loguru import logger
 
 __all__ = "Informativeness"
-
-logger = logging.getLogger(__name__)
 
 
 class FilterType(str, Enum):

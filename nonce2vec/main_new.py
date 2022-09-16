@@ -169,6 +169,11 @@ def train_n2v(
     )
     test_sentences = read_sentences(test_data)
     n2v_model.add_nonces(test_sentences)
+    if n2v_model.new_nonces is None:
+        raise RuntimeError(
+            "No new nonces were added to the Nonce2Vec model. "
+            "Are you sure new nonces are included in the data?"
+        )
     for nonce in n2v_model.new_nonces:
         print(nonce, n2v_model.model.wv.get_vector(nonce))
 

@@ -1,12 +1,12 @@
 """Files utils."""
 
-import logging
 import os
 import random
 
+from loguru import logger
+
 __all__ = ("Samples", "get_model_path")
 
-logger = logging.getLogger(__name__)
 
 DATASETS = {
     "men": os.path.join(

@@ -3,15 +3,12 @@
 Methods used to manipulate YAML-based configuration files.
 """
 
-import logging
-
 import yaml
+from loguru import logger
 
 from nonce2vec.utils.immutables import ImmutableConfig
 
 __all__ = "load"
-
-logger = logging.getLogger(__name__)
 
 
 def load(config_file):
