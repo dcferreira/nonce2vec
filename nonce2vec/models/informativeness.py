@@ -36,9 +36,9 @@ class Informativeness:
         self,
         model: Union[str, Path, Word2Vec],
         sum_filter: Optional[FilterType] = None,
-        sum_thresh: Optional[int] = None,
+        sum_threshold: Optional[int] = None,
         train_filter: Optional[FilterType] = None,
-        train_thresh: Optional[int] = None,
+        train_threshold: Optional[int] = None,
         sort_by: Optional[SortBy] = None,
     ):
         """Initialize the Informativeness instance.
@@ -46,28 +46,28 @@ class Informativeness:
         Args:
             model_path: The absolute path to the gensim w2v CBOW model.
             sum_filter: Filter for the sum initialization phase.
-            sum_thresh: Threshold for sum filter (self and cwi filters
+            sum_threshold: Threshold for sum filter (self and cwi filters
                         only).
             train_filter: Filter for the training phase.
-            train_thresh: Threshold for the train filter (self and cwi
+            train_threshold: Threshold for the train filter (self and cwi
                           filters only).
             sort_by: Sort context items in asc or desc of cwi values
                      before training.
         """
         self._sum_filter = sum_filter
-        if sum_filter and sum_filter != "random" and sum_thresh is None:
+        if sum_filter and sum_filter != "random" and sum_threshold is None:
             raise Exception(
                 "Setting sum_filter as '{}' requires specifying "
                 "a threshold parameter".format(sum_filter)
             )
-        self._sum_thresh = sum_thresh
+        self._sum_thresh = sum_threshold
         self._train_filter = train_filter
-        if train_filter and train_filter != "random" and train_thresh is None:
+        if train_filter and train_filter != "random" and train_threshold is None:
             raise Exception(
                 "Setting train_filter as '{}' requires "
                 "specifying a threshold parameter".format(train_filter)
             )
-        self._train_thresh = train_thresh
+        self._train_thresh = train_threshold
         self._model: Word2Vec
         if isinstance(model, str):
             self._model = Word2Vec.load(model)

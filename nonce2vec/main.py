@@ -28,9 +28,7 @@ def _get_rank(probe, nns):
     for idx, nonce_similar_word in enumerate(nns):
         if nonce_similar_word[0] == probe:
             return idx + 1  # rank starts at 1
-    raise Exception(
-        "Could not find probe {} in nonce most similar words " "{}".format(probe, nns)
-    )
+    raise Exception(f"Could not find probe {probe!r} in nonce most similar words")
 
 
 def _update_rr_and_count(relative_ranks, count, rank):
@@ -208,9 +206,9 @@ def _load_informativeness_model(args):
     return Informativeness(
         model_path=args.info_model,
         sum_filter=args.sum_filter,
-        sum_thresh=args.sum_thresh,
+        sum_threshold=args.sum_threshold,
         train_filter=args.train_filter,
-        train_thresh=args.train_thresh,
+        train_threshold=args.train_threshold,
         sort_by=args.sort_by,
     )
 

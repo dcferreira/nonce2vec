@@ -10,7 +10,6 @@ def test_add_nonce_reduced(w2v_models, test_sentences):
     )
 
     nonce = "giraffes"
-    # n2v_model.add_nonce(nonce, test_sentences)
     n2v_model.add_nonces([test_sentences[0]])
     assert nonce in n2v_model.model.wv.key_to_index
 

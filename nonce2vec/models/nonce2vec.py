@@ -80,8 +80,6 @@ class Nonce2Vec:
         sum_over_set: bool = False,
         weighted: bool = False,
         train_over_set: bool = False,
-        with_stats: bool = False,
-        shuffle: bool = False,
     ):
         self.model: CustomTrainingWord2Vec
         if isinstance(model, Path):
@@ -104,8 +102,6 @@ class Nonce2Vec:
         self.sum_over_set = sum_over_set
         self.weighted = weighted
         self.train_over_set = train_over_set
-        self.with_stats = with_stats
-        self.shuffle = shuffle
 
         self.vectors_lockf: npt.NDArray[np.float32] = np.ones(
             len(self.model.wv), dtype=np.float32
@@ -117,9 +113,21 @@ class Nonce2Vec:
             self.neg_labels[0] = 1.0
 
         self.new_nonces: Optional[List[str]] = None
-        self._new_nonces_set: Optional[Set[str]] = None
+        self._new_unseen_words: Optional[Set[str]] = None
 
-    def add_nonces(self, sentences: Sequence[Sequence[str]]):
+    def update_new_norms(self):
+        if self.model.wv.norms is not None:
+            norms = self.model.wv.norms
+            vectors = self.model.wv.vectors
+            if len(norms) != len(vectors):
+                self.model.wv.norms = np.concatenate([norms, np.linalg.norm(vectors[len(norms):], axis=1)])
+
+    def add_nonces(self, sentences: Sequence[Sequence[str]], nonces: Optional[Sequence[str]] = None):
+        if nonces is None:
+            all_words = {w for s in sentences for w in s}
+            self._new_unseen_words = all_words - set(self.model.wv.key_to_index.keys())
+        else:
+            self._new_unseen_words = set(nonces)
         if self.reduced:
             self.build_vocab([sentences[0]], update=True)
         else:
@@ -128,6 +136,9 @@ class Nonce2Vec:
             self.model.train(
                 sentences, total_examples=self.model.corpus_count, epochs=self.epochs
             )
+        else:
+            self.update_new_norms()
+        self._new_unseen_words = None
 
     def build_vocab(
         self,
@@ -180,7 +191,6 @@ class Nonce2Vec:
         negative,
         wv,
         sentences,
-        # nonce,
         update=False,
         sum_over_set=False,
         weighted=False,
@@ -200,7 +210,6 @@ class Nonce2Vec:
                 negative,
                 wv,
                 sentences,
-                # nonce,
                 sum_over_set,
                 weighted,
                 beta,
@@ -213,7 +222,6 @@ class Nonce2Vec:
         negative,
         wv,
         sentences,
-        # nonce,
         sum_over_set=False,
         weighted=False,
         beta=1000,
@@ -223,10 +231,11 @@ class Nonce2Vec:
         added vocabulary.
         """
         logger.info("updating layer weights")
-        gained_vocab = len(wv) - len(wv.vectors)
+        if self._new_unseen_words is None:
+            raise RuntimeError("Something went wrong: new nonces weren't set correctly!")
+        gained_vocab = len(self._new_unseen_words)
         newvectors = np.zeros((gained_vocab, wv.vector_size), dtype=np.float32)
         self.new_nonces = wv.index_to_key[len(wv.vectors) :]
-        self._new_nonces_set = list(self.new_nonces)
 
         # randomize the remaining words
         # FIXME as-is the code is bug-prone. We actually only want to
@@ -344,7 +353,7 @@ class Nonce2Vec:
                 # AND the nonce (regardless of count)
                 if (
                     keep_vocab_item(word, v, min_count, trim_rule=trim_rule)
-                    or word in self._new_nonces_set
+                    or word in self._new_unseen_words
                 ):
                     new_words.append(word)
                     new_total += v
@@ -361,15 +370,10 @@ class Nonce2Vec:
         )
         new_unique_pct = len(new_words) * 100 / max(original_unique_total, 1)
         logger.info(
-            "New added %i unique words (%i%% of original %i) "
-            "and increased the count of %i pre-existing words "
-            "(%i%% of original %i)",
-            len(new_words),
-            new_unique_pct,
-            original_unique_total,
-            len(pre_exist_words),
-            pre_exist_unique_pct,
-            original_unique_total,
+            f"New added {len(new_words)} unique words ({new_unique_pct}% of "
+            f"original {original_unique_total}) and increased the count of "
+            f"{len(pre_exist_words)} pre-existing words "
+            f"({pre_exist_unique_pct}% of original {original_unique_total})"
         )
         retain_words = new_words + pre_exist_words
         retain_total = new_total + pre_exist_total
@@ -401,19 +405,17 @@ class Nonce2Vec:
 
         if not dry_run and not keep_raw_vocab:
             logger.info(
-                "deleting the raw counts dictionary of %i items",
-                len(self.model.raw_vocab),
+                f"deleting the raw counts dictionary of {len(self.model.raw_vocab)} items"
             )
             self.model.raw_vocab = defaultdict(int)
 
         logger.info(
-            "sample=%g downsamples %i most-common words", sample, downsample_unique
+            f"sample={sample} downsamples {downsample_unique} most-common words"
         )
         logger.info(
-            "downsampling leaves estimated %i word corpus " "(%.1f%% of prior %i)",
-            downsample_total,
-            downsample_total * 100.0 / max(retain_total, 1),
-            retain_total,
+            f"downsampling leaves estimated {downsample_total} word corpus "
+            f"({downsample_total * 100.0 / max(retain_total, 1):.1f}% of prior "
+            f"{retain_total})"
         )
 
         # return from each step: words-affected, resulting-corpus-size,

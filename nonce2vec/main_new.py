@@ -1,16 +1,34 @@
+import copy
 import os
 import pickle
+from enum import Enum
+from functools import partial
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Iterator
 
+import numpy as np
 import typer
 from gensim.models import Word2Vec
+from loguru import logger
 
+from nonce2vec.main import (
+    _get_rank,
+    _compute_average_sim,
+    _update_rr_and_count,
+    _display_density_stats,
+)
 from nonce2vec.models.informativeness import FilterType, Informativeness, SortBy
 from nonce2vec.models.nonce2vec import LearningRateFunction, Nonce2Vec
-from nonce2vec.utils.files import get_model_path
+from nonce2vec.utils.files import get_model_path, Samples
 
 app = typer.Typer()
+
+
+class IncludedDataset(str, Enum):
+    definitions = "definitions"
+    l2 = "l2"
+    l4 = "l4"
+    l6 = "l6"
 
 
 def read_sentences(path: Path) -> List[List[str]]:
@@ -116,11 +134,79 @@ def train_w2v(
         pickle.dump(cbow_model, fd)
 
 
+def _replace_words_in_list(sentence: Sequence[str], replace: str, replace_by: str) -> List[str]:
+    return list(map(lambda x: x if x != replace else replace_by, sentence))
+
+
+def _test_on_definitions(
+    n2v: Nonce2Vec,
+    shuffle: bool = False,
+    reload: bool = False,
+    with_stats: bool = False,
+):
+    """Test the definitional nonces."""
+    ranks = []
+    sum_10 = []
+    sum_25 = []
+    sum_50 = []
+    relative_ranks = 0.0
+    count = 0
+    samples = Samples(source="def", shuffle=shuffle)
+    total_num_sent = sum(1 for line in samples)
+    logger.info(
+        "Testing Nonce2Vec on the nonces dataset containing "
+        "{} sentences".format(total_num_sent)
+    )
+    num_sent = 1
+    n2vmodel = copy.deepcopy(n2v) if reload else n2v
+    for sentences, nonce, probe in samples:
+        logger.info("-" * 30)
+        logger.info("Processing sentence {}/{}".format(num_sent, total_num_sent))
+        if reload:
+            del n2vmodel
+            # reset model to before seeing the nonces
+            n2vmodel = copy.deepcopy(n2v)
+
+        logger.debug("Adding sentence...")
+        replace_fn = partial(_replace_words_in_list, replace=nonce, replace_by=f"{nonce}_true")
+        n2vmodel.add_nonces(list(map(replace_fn, sentences)))
+        logger.debug("Finished sentence!")
+        vocab_size = len(n2vmodel.model.wv)
+        logger.info("vocab size = {}".format(vocab_size))
+        logger.info("nonce: {}".format(nonce))
+        logger.info("sentence: {}".format(sentences))
+        if nonce not in n2vmodel.model.wv:
+            logger.error(
+                "Nonce '{}' not in gensim.word2vec.model vocabulary".format(nonce)
+            )
+            continue
+
+        nns = n2vmodel.model.wv.most_similar(nonce, topn=vocab_size)
+        logger.info("10 most similar words: {}".format(nns[:10]))
+        rank = _get_rank(probe, nns)
+        ranks.append(rank)
+        if with_stats:
+            gold_nns = n2vmodel.model.wv.most_similar(
+                f"{nonce}_true", topn=vocab_size
+            )
+            sum_10.append(_compute_average_sim(gold_nns[:10]))
+            sum_25.append(_compute_average_sim(gold_nns[:25]))
+            sum_50.append(_compute_average_sim(gold_nns[:50]))
+        relative_ranks, count = _update_rr_and_count(relative_ranks, count, rank)
+        num_sent += 1
+        median = np.median(ranks)
+    logger.info("Final MRR =  {}".format(relative_ranks / count))
+    logger.info("Median Rank = {}".format(median))
+    if with_stats:
+        _display_density_stats(ranks, sum_10, sum_25, sum_50)
+
+
 @app.command()
 def train_n2v(
     model: Path,
     info_model: Path,
-    test_data: Path,
+    dataset: Optional[IncludedDataset] = None,
+    dataset_path: Optional[Path] = None,
     reload: bool = False,
     train_with: LearningRateFunction = LearningRateFunction.CWI,
     lambda_decay: float = 70,
@@ -136,17 +222,17 @@ def train_n2v(
     with_stats: bool = False,
     shuffle: bool = False,
     sum_filter: Optional[FilterType] = None,
-    sum_thresh: Optional[int] = None,
+    sum_threshold: Optional[int] = None,
     train_filter: Optional[FilterType] = None,
-    train_thresh: Optional[int] = None,
+    train_threshold: Optional[int] = None,
     sort_by: Optional[SortBy] = None,
 ):
     info_model_obj = Informativeness(
         os.fspath(info_model),
         sum_filter=sum_filter,
-        sum_thresh=sum_thresh,
+        sum_threshold=sum_threshold,
         train_filter=train_filter,
-        train_thresh=train_thresh,
+        train_threshold=train_threshold,
         sort_by=sort_by,
     )
     n2v_model = Nonce2Vec(
@@ -164,18 +250,21 @@ def train_n2v(
         sum_over_set=sum_over_set,
         weighted=weighted,
         train_over_set=train_over_set,
-        with_stats=with_stats,
-        shuffle=shuffle,
     )
-    test_sentences = read_sentences(test_data)
-    n2v_model.add_nonces(test_sentences)
-    if n2v_model.new_nonces is None:
-        raise RuntimeError(
-            "No new nonces were added to the Nonce2Vec model. "
-            "Are you sure new nonces are included in the data?"
+    if dataset_path is not None:
+        test_sentences = read_sentences(dataset_path)
+        n2v_model.add_nonces(test_sentences)
+        if n2v_model.new_nonces is None:
+            raise RuntimeError(
+                "No new nonces were added to the Nonce2Vec model. "
+                "Are you sure new nonces are included in the data?"
+            )
+        for nonce in n2v_model.new_nonces:
+            print(nonce, n2v_model.model.wv.get_vector(nonce))
+    elif dataset == IncludedDataset.definitions:
+        _test_on_definitions(
+            n2v_model, shuffle=shuffle, reload=reload, with_stats=with_stats
         )
-    for nonce in n2v_model.new_nonces:
-        print(nonce, n2v_model.model.wv.get_vector(nonce))
 
 
 if __name__ == "__main__":
