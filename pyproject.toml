@@ -35,11 +35,10 @@ classifiers = [
 ]
 dependencies = [
     "gensim~=4.2.0",
-    "numpy~=1.21",
+    "numpy>=1.17.0",
     "pyyaml~=6.0",
-    "scipy~=1.7.0",
+    "scipy>=1.7.0",
     "typer~=0.6.0",
-    "six~=1.16.0",
     "loguru~=0.6.0"
 ]
 dynamic = [
