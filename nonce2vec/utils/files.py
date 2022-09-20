@@ -2,11 +2,11 @@
 
 import os
 import random
+from typing import Optional
 
 from loguru import logger
 
 __all__ = ("Samples", "get_model_path")
-
 
 DATASETS = {
     "men": os.path.join(
@@ -87,6 +87,13 @@ class Samples:  # pylint:disable=R0903
         self._source = source
         self._datafile = input_data
         self._shuffle = shuffle
+        self._len: Optional[int] = None
+
+    @property
+    def __len__(self):
+        if self._len is None:
+            self._len = sum(1 for _ in self)
+        return self._len
 
     def _iterate_over_wiki(self):
         with open(self._datafile, "rt", encoding="utf-8") as input_stream:

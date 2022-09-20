@@ -54,29 +54,30 @@ n2v = "nonce2vec.main:main"
 
 [tool.hatch.envs.default]
 dependencies = [
-  "pytest",
-  "pytest-cov",
-  "black",
-  "mypy",
-  "flakeheaven",
-  "isort",
+    "pytest",
+    "pytest-cov",
+    "black",
+    "mypy",
+    "flakeheaven",
+    "isort",
+    "types-PyYAML~=6.0",
 ]
 
 [tool.hatch.envs.default.scripts]
 test = "pytest -s --verbose --showlocals --cov-report=term-missing --cov-config=pyproject.toml --cov=nonce2vec --cov=tests"
 typecheck = "mypy --show-error-codes nonce2vec tests"
 format-check = [
-  "black --check nonce2vec tests",
-  "isort --check nonce2vec tests",
+    "black --check nonce2vec tests",
+    "isort --check nonce2vec tests",
 ]
 lint = [
-  "flakeheaven lint nonce2vec tests",
-  "format-check",
+    "flakeheaven lint nonce2vec tests",
+    "format-check",
 ]
 format = [
-  "black nonce2vec tests",
-  "isort nonce2vec tests",
-  "format-check",
+    "black nonce2vec tests",
+    "isort nonce2vec tests",
+    "format-check",
 ]
 
 [project.urls]
@@ -98,7 +99,14 @@ show_source = true
 
 [tool.flakeheaven.plugins]
 pyflakes = ["+*"]
-pycodestyle = ["+*", "-W503"]
+pycodestyle = ["+*", "-W503", "-E203"]
 pylint = ["+*"]
 # enable everything that starts with `flake8-`
 "flake8-*" = ["+*"]
+
+[[tool.mypy.overrides]]
+module = [
+    "gensim.*",
+    "scipy.*",
+]
+ignore_missing_imports = true

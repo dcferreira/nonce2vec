@@ -17,7 +17,6 @@ from gensim.models.word2vec import Word2Vec
 from gensim.utils import keep_vocab_item
 from loguru import logger
 from scipy.special import expit
-from six import iteritems
 
 from nonce2vec.models.informativeness import Informativeness
 
@@ -120,9 +119,13 @@ class Nonce2Vec:
             norms = self.model.wv.norms
             vectors = self.model.wv.vectors
             if len(norms) != len(vectors):
-                self.model.wv.norms = np.concatenate([norms, np.linalg.norm(vectors[len(norms):], axis=1)])
+                self.model.wv.norms = np.concatenate(
+                    [norms, np.linalg.norm(vectors[len(norms) :], axis=1)]
+                )
 
-    def add_nonces(self, sentences: Sequence[Sequence[str]], nonces: Optional[Sequence[str]] = None):
+    def add_nonces(
+        self, sentences: Sequence[Sequence[str]], nonces: Optional[Sequence[str]] = None
+    ):
         if nonces is None:
             all_words = {w for s in sentences for w in s}
             self._new_unseen_words = all_words - set(self.model.wv.key_to_index.keys())
@@ -232,7 +235,9 @@ class Nonce2Vec:
         """
         logger.info("updating layer weights")
         if self._new_unseen_words is None:
-            raise RuntimeError("Something went wrong: new nonces weren't set correctly!")
+            raise RuntimeError(
+                "Something went wrong: new nonces weren't set correctly!"
+            )
         gained_vocab = len(self._new_unseen_words)
         newvectors = np.zeros((gained_vocab, wv.vector_size), dtype=np.float32)
         self.new_nonces = wv.index_to_key[len(wv.vectors) :]
@@ -335,13 +340,15 @@ class Nonce2Vec:
         drop_total = drop_unique = 0
 
         if not update:
-            raise Exception("Nonce2Vec can only update a pre-existing vocabulary")
+            raise ValueError("Nonce2Vec can only update a pre-existing vocabulary")
+        if not isinstance(self.model.raw_vocab, dict):
+            raise RuntimeError("`model.raw_vocab` was not initialized correctly!")
         logger.info("Updating model with new vocabulary")
         new_total = pre_exist_total = 0
         # New words and pre-existing words are two separate lists
         new_words = []
         pre_exist_words = []
-        for word, v in iteritems(self.model.raw_vocab):
+        for word, v in self.model.raw_vocab.items():
             # Update count of all words already in vocab
             if word in wv:
                 pre_exist_words.append(word)
@@ -405,7 +412,8 @@ class Nonce2Vec:
 
         if not dry_run and not keep_raw_vocab:
             logger.info(
-                f"deleting the raw counts dictionary of {len(self.model.raw_vocab)} items"
+                f"deleting the raw counts dictionary of "
+                f"{len(self.model.raw_vocab)} items"
             )
             self.model.raw_vocab = defaultdict(int)
 

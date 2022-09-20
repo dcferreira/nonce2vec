@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import scipy
 from gensim.models import KeyedVectors, Word2Vec
 from loguru import logger
+from scipy.stats import entropy
 
 __all__ = "Informativeness"
 
@@ -44,7 +44,7 @@ class Informativeness:
         """Initialize the Informativeness instance.
 
         Args:
-            model_path: The absolute path to the gensim w2v CBOW model.
+            model: The path to the gensim w2v CBOW model, or the model itself.
             sum_filter: Filter for the sum initialization phase.
             sum_threshold: Threshold for sum filter (self and cwi filters
                         only).
@@ -100,7 +100,7 @@ class Informativeness:
         probs = self._get_prob_distribution(context)
         if not probs:
             return 0
-        shannon_entropy = scipy.stats.entropy(probs)
+        shannon_entropy = entropy(probs)
         ctx_ent = 1 - (shannon_entropy / np.log(len(probs)))
         return ctx_ent
 

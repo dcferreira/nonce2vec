@@ -176,4 +176,4 @@ n2v test \
 [travis-image]:https://img.shields.io/travis/akb89/nonce2vec.svg?style=flat-square
 [travis-url]:https://travis-ci.org/akb89/nonce2vec
 [license-image]:http://img.shields.io/badge/license-MIT-000000.svg?style=flat-square
-[license-url]:LICENSE.txt
+[license-url]:LICENSE

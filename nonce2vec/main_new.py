@@ -4,7 +4,7 @@ import pickle
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Iterator
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import typer
@@ -12,14 +12,14 @@ from gensim.models import Word2Vec
 from loguru import logger
 
 from nonce2vec.main import (
-    _get_rank,
     _compute_average_sim,
-    _update_rr_and_count,
     _display_density_stats,
+    _get_rank,
+    _update_rr_and_count,
 )
 from nonce2vec.models.informativeness import FilterType, Informativeness, SortBy
 from nonce2vec.models.nonce2vec import LearningRateFunction, Nonce2Vec
-from nonce2vec.utils.files import get_model_path, Samples
+from nonce2vec.utils.files import Samples, get_model_path
 
 app = typer.Typer()
 
@@ -134,7 +134,9 @@ def train_w2v(
         pickle.dump(cbow_model, fd)
 
 
-def _replace_words_in_list(sentence: Sequence[str], replace: str, replace_by: str) -> List[str]:
+def _replace_words_in_list(
+    sentence: Sequence[str], replace: str, replace_by: str
+) -> List[str]:
     return list(map(lambda x: x if x != replace else replace_by, sentence))
 
 
@@ -152,13 +154,14 @@ def _test_on_definitions(
     relative_ranks = 0.0
     count = 0
     samples = Samples(source="def", shuffle=shuffle)
-    total_num_sent = sum(1 for line in samples)
+    total_num_sent = len(samples)
     logger.info(
         "Testing Nonce2Vec on the nonces dataset containing "
         "{} sentences".format(total_num_sent)
     )
     num_sent = 1
     n2vmodel = copy.deepcopy(n2v) if reload else n2v
+    median = -np.inf
     for sentences, nonce, probe in samples:
         logger.info("-" * 30)
         logger.info("Processing sentence {}/{}".format(num_sent, total_num_sent))
@@ -168,7 +171,9 @@ def _test_on_definitions(
             n2vmodel = copy.deepcopy(n2v)
 
         logger.debug("Adding sentence...")
-        replace_fn = partial(_replace_words_in_list, replace=nonce, replace_by=f"{nonce}_true")
+        replace_fn = partial(
+            _replace_words_in_list, replace=nonce, replace_by=f"{nonce}_true"
+        )
         n2vmodel.add_nonces(list(map(replace_fn, sentences)))
         logger.debug("Finished sentence!")
         vocab_size = len(n2vmodel.model.wv)
@@ -186,9 +191,7 @@ def _test_on_definitions(
         rank = _get_rank(probe, nns)
         ranks.append(rank)
         if with_stats:
-            gold_nns = n2vmodel.model.wv.most_similar(
-                f"{nonce}_true", topn=vocab_size
-            )
+            gold_nns = n2vmodel.model.wv.most_similar(f"{nonce}_true", topn=vocab_size)
             sum_10.append(_compute_average_sim(gold_nns[:10]))
             sum_25.append(_compute_average_sim(gold_nns[:25]))
             sum_50.append(_compute_average_sim(gold_nns[:50]))
