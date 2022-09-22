@@ -70,6 +70,7 @@ class Nonce2Vec:
         epochs: int = 5,
         train_with: LearningRateFunction = LearningRateFunction.CWI,
         alpha: Optional[float] = None,
+        negative: Optional[int] = None,
         lambda_decay: float = 70,
         kappa: int = 1,
         beta: int = 1000,
@@ -93,6 +94,7 @@ class Nonce2Vec:
         self.epochs = epochs
         self.train_with = train_with
         self.alpha = alpha if alpha is not None else self.model.alpha
+        self.negative = negative if negative is not None else self.model.negative
         self.lambda_decay = lambda_decay
         self.kappa = kappa
         self.beta = beta
@@ -108,9 +110,9 @@ class Nonce2Vec:
             len(self.model.wv), dtype=np.float32
         )
         self.neg_labels: npt.NDArray[np.float32] = np.array([])
-        if self.model.negative > 0:
+        if self.negative > 0:
             # precompute negative labels optimization for pure-python training
-            self.neg_labels = np.zeros(self.model.negative + 1).astype(np.float32)
+            self.neg_labels = np.zeros(self.negative + 1).astype(np.float32)
             self.neg_labels[0] = 1.0
 
         self.new_nonces: Optional[List[str]] = None
@@ -160,7 +162,7 @@ class Nonce2Vec:
         self.model.corpus_count = corpus_count
         report_values, pre_exist_words = self.prepare_vocab(
             self.model.hs,
-            self.model.negative,
+            self.negative,
             self.model.wv,
             update=update,
             keep_raw_vocab=keep_raw_vocab,
@@ -173,7 +175,7 @@ class Nonce2Vec:
         self.prepare_weights(
             pre_exist_words,
             self.model.hs,
-            self.model.negative,
+            self.negative,
             self.model.wv,
             sentences,
             update=update,
@@ -505,11 +507,11 @@ def train_sg_pair(
     # Only train the nonce
     if nonce2vec.model.wv.index_to_key[context_index] == nonce and word != nonce:
         lock_factor = context_locks[context_index]
-        if nonce2vec.model.negative:
+        if nonce2vec.negative:
             # use this word (label = 1) + `negative` other random words not
             # from this sentence (label = 0)
             word_indices = [predict_word_idx]
-            while len(word_indices) < nonce2vec.model.negative + 1:
+            while len(word_indices) < nonce2vec.negative + 1:
                 w = nonce2vec.model.cum_table.searchsorted(
                     nonce2vec.model.random.randint(nonce2vec.model.cum_table[-1])
                 )
