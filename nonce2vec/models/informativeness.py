@@ -91,6 +91,8 @@ class Informativeness:
         words_and_probs = self._model.predict_output_word(
             context, topn=len(self._model.wv)
         )
+        if words_and_probs is None:
+            return []
         return [item[1] for item in words_and_probs]
 
     @lru_cache(maxsize=10)
