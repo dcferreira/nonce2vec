@@ -69,6 +69,7 @@ class Nonce2Vec:
         reload: bool = False,
         epochs: int = 5,
         train_with: LearningRateFunction = LearningRateFunction.CWI,
+        alpha: Optional[float] = None,
         lambda_decay: float = 70,
         kappa: int = 1,
         beta: int = 1000,
@@ -91,6 +92,7 @@ class Nonce2Vec:
         self.reload = reload
         self.epochs = epochs
         self.train_with = train_with
+        self.alpha = alpha if alpha is not None else self.model.alpha
         self.lambda_decay = lambda_decay
         self.kappa = kappa
         self.beta = beta
@@ -544,7 +546,7 @@ def train_batch_sg(nonce2vec: Nonce2Vec, sentences: Sequence[Sequence[str]]) -> 
         raise ValueError("Trying to train a batch before setting new nonces!")
     result = 0
     for current_nonce in nonce2vec.new_nonces:
-        alpha = nonce2vec.model.alpha  # re-initialize learning rate before each batch
+        alpha = nonce2vec.alpha  # re-initialize learning rate before each batch
         ctx_ent_tuples = nonce2vec.info_model.filter_and_sort_train_ctx_ent(
             sentences, nonce2vec.model.wv, current_nonce
         )

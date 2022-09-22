@@ -1,4 +1,5 @@
 from copy import deepcopy
+
 import numpy as np
 
 from nonce2vec.models.informativeness import Informativeness
@@ -66,10 +67,13 @@ def test_determinism(w2v_models, test_sentences):
     n2v_model2 = Nonce2Vec(deepcopy(sg_model), info_model_obj, reduced=True)
     n2v_model2.add_nonces(test_sentences)
 
-    np.testing.assert_array_equal(n2v_model1.model.wv.get_vector("cats"),
-                                  n2v_model2.model.wv.get_vector("cats"))
-    np.testing.assert_array_equal(n2v_model1.model.wv.get_vector("giraffes"),
-                                  n2v_model2.model.wv.get_vector("giraffes"))
+    np.testing.assert_array_equal(
+        n2v_model1.model.wv.get_vector("cats"), n2v_model2.model.wv.get_vector("cats")
+    )
+    np.testing.assert_array_equal(
+        n2v_model1.model.wv.get_vector("giraffes"),
+        n2v_model2.model.wv.get_vector("giraffes"),
+    )
 
 
 def test_add_nonces_multiple_occurences(w2v_models, test_sentences):
@@ -82,9 +86,12 @@ def test_add_nonces_multiple_occurences(w2v_models, test_sentences):
     n2v_model2.add_nonces(test_sentences)
 
     # these vectors should be the same
-    np.testing.assert_array_equal(n2v_model1.model.wv.get_vector("cats"),
-                                  n2v_model2.model.wv.get_vector("cats"))
+    np.testing.assert_array_equal(
+        n2v_model1.model.wv.get_vector("cats"), n2v_model2.model.wv.get_vector("cats")
+    )
     with np.testing.assert_raises(AssertionError):
         # this should raise an error, the vectors should be different
-        np.testing.assert_array_equal(n2v_model1.model.wv.get_vector("giraffes"),
-                                      n2v_model2.model.wv.get_vector("giraffes"))
+        np.testing.assert_array_equal(
+            n2v_model1.model.wv.get_vector("giraffes"),
+            n2v_model2.model.wv.get_vector("giraffes"),
+        )
